@@ -1,3 +1,0 @@
-# DNS-QUIC
-
-DNS/QUIC 
