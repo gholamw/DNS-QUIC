@@ -4,6 +4,7 @@ CMAKE_POLICY(SET CMP0003 NEW)
 PROJECT(picoquic)
 
 SET(CMAKE_C_STANDARD 11)
+SET(CMAKE_CXX_STANDARD 11)
 
 # FIND_PACKAGE(PkgConfig REQUIRED)
 
@@ -76,6 +77,7 @@ ADD_LIBRARY(picoquic-core
     ${PICOQUIC_LIBRARY_FILES}
 )
 
+
 ADD_EXECUTABLE(picoquicdemo picoquicfirst/picoquicdemo.c
                             picoquicfirst/getopt.c )
 TARGET_LINK_LIBRARIES(picoquicdemo picoquic-core
@@ -86,6 +88,8 @@ TARGET_LINK_LIBRARIES(picoquicdemo picoquic-core
     ${CMAKE_DL_LIBS}
 )
 
+find_package( Threads )
+target_link_libraries(picoquicdemo "$<$<CXX_COMPILER_ID:GNU>:-pthread>$<$<CXX_COMPILER_ID:Clang>:-pthreads>")
 ADD_EXECUTABLE(picoquic_ct picoquic_t/picoquic_t.c
  ${PICOQUIC_TEST_LIBRARY_FILES} )
 TARGET_LINK_LIBRARIES(picoquic_ct picoquic-core

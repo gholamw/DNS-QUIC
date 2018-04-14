@@ -31,7 +31,7 @@
  * Data is sent over streams. This is instantiated by the "Post to stream" command, which
  * chains data to the head of stream structure. Data is unchained when it sent for the
  * first time.
- * 
+ *
  * Data is sent in packets, which contain stream frames and possibly other frames.
  * The retransmission logic operates on packets. If a packet is seen as lost, the
  * important frames that it contains will have to be retransmitted.
@@ -370,7 +370,7 @@ size_t picoquic_get_checksum_length(picoquic_cnx_t* cnx, int is_cleartext_mode)
     return ret;
 }
 
-size_t picoquic_protect_packet(picoquic_cnx_t* cnx, 
+size_t picoquic_protect_packet(picoquic_cnx_t* cnx,
     uint8_t * bytes, uint64_t sequence_number,
     size_t length, size_t header_length, size_t pn_offset,
     uint8_t* send_buffer,
@@ -401,7 +401,7 @@ size_t picoquic_protect_packet(picoquic_cnx_t* cnx,
         if (pn_offset < sample_offset)
         {
             /* Encode */
-            picoquic_pn_encrypt(pn_enc, send_buffer + sample_offset, send_buffer + pn_offset, 
+            picoquic_pn_encrypt(pn_enc, send_buffer + sample_offset, send_buffer + pn_offset,
                 send_buffer + pn_offset, sample_offset - pn_offset);
         }
     }
@@ -427,7 +427,7 @@ void picoquic_update_pacing_data(picoquic_path_t * path_x)
     }
 }
 
-/* 
+/*
  * Update the pacing data after sending a packet
  */
 void picoquic_update_pacing_after_send(picoquic_path_t * send_path, uint64_t current_time)
@@ -472,7 +472,7 @@ void picoquic_queue_for_retransmit(picoquic_cnx_t* cnx, picoquic_path_t * path_x
  * retransmission. Also, prune the retransmit queue as needed.
  *
  * TODO: consider that the retransmit timer is per path, from the path on
- * which the packet was first sent, but the retransmission may be on 
+ * which the packet was first sent, but the retransmission may be on
  * a different path, with different MTU.
  */
 
@@ -614,7 +614,7 @@ int picoquic_retransmit_needed(picoquic_cnx_t* cnx, picoquic_path_t * path_x, ui
                             p->length - byte_index, &frame_length, &frame_is_pure_ack,
                             picoquic_supported_versions[cnx->version_index].version);
 
-                        /* Check whether the data was already acked, which may happen in 
+                        /* Check whether the data was already acked, which may happen in
                          * case of spurious retransmissions */
                         if (ret == 0 && frame_is_pure_ack == 0) {
                             ret = picoquic_check_stream_frame_already_acked(cnx, &p->bytes[byte_index],
@@ -654,9 +654,10 @@ int picoquic_retransmit_needed(picoquic_cnx_t* cnx, picoquic_path_t * path_x, ui
                              * Max retransmission count was exceeded. Disconnect.
                              */
                             DBG_PRINTF("%s\n", "Too many retransmits, disconnect");
-                            cnx->cnx_state = picoquic_state_disconnected;
+                            //return;
+                            //cnx->cnx_state = picoquic_state_disconnected;
                             if (cnx->callback_fn) {
-                                (cnx->callback_fn)(cnx, 0, NULL, 0, picoquic_callback_close, cnx->callback_ctx);
+                                //(cnx->callback_fn)(cnx, 0, NULL, 0, picoquic_callback_close, cnx->callback_ctx);
                             }
                             length = 0;
                             should_retransmit = 0;
@@ -763,19 +764,19 @@ int picoquic_is_mtu_probe_needed(picoquic_cnx_t* cnx, picoquic_path_t * path_x)
 }
 
 /* Prepare an MTU probe packet */
-size_t picoquic_prepare_mtu_probe(picoquic_cnx_t* cnx, 
+size_t picoquic_prepare_mtu_probe(picoquic_cnx_t* cnx,
     picoquic_path_t * path_x,
     size_t header_length, size_t checksum_length,
     uint8_t* bytes)
 {
     uint32_t probe_length;
     size_t length = header_length;
-    
+
 
     if (path_x->send_mtu_max_tried == 0) {
         if (cnx->remote_parameters.max_packet_size > 0) {
             probe_length = cnx->remote_parameters.max_packet_size;
-            
+
             if (cnx->quic->mtu_max > 0 && (int)probe_length > cnx->quic->mtu_max) {
                 probe_length = cnx->quic->mtu_max;
             } else if (probe_length > PICOQUIC_MAX_PACKET_SIZE) {
@@ -1099,7 +1100,7 @@ int picoquic_prepare_packet_client_init(picoquic_cnx_t* cnx, picoquic_path_t * p
 
     stream = picoquic_find_ready_stream(cnx, stream_restricted);
 
-    if (ret == 0 && retransmit_possible && 
+    if (ret == 0 && retransmit_possible &&
         (length = picoquic_retransmit_needed(cnx, path_x, current_time, packet, &is_cleartext_mode, &header_length, &pn_offset)) > 0) {
         /* Set the new checksum length */
         checksum_overhead = picoquic_get_checksum_length(cnx, is_cleartext_mode);
@@ -1671,7 +1672,7 @@ int picoquic_prepare_packet_ready(picoquic_cnx_t* cnx, picoquic_path_t * path_x,
 
         if (is_cleartext_mode) {
             /* AEAD Encrypt, to the send buffer */
-            length = picoquic_protect_packet(cnx, packet->bytes, packet->sequence_number, 
+            length = picoquic_protect_packet(cnx, packet->bytes, packet->sequence_number,
                 length, header_length, pn_offset,
                 send_buffer, cnx->aead_encrypt_cleartext_ctx, cnx->pn_enc_cleartext);
         } else {
@@ -1705,7 +1706,7 @@ int picoquic_prepare_packet(picoquic_cnx_t* cnx, picoquic_packet* packet,
     if ((cnx->cnx_state < picoquic_state_disconnecting && (current_time - cnx->latest_progress_time) > PICOQUIC_MICROSEC_SILENCE_MAX) ||
         (cnx->cnx_state < picoquic_state_client_ready &&
             current_time > cnx->start_time + PICOQUIC_MICROSEC_HANDSHAKE_MAX))
-    
+
     {
         /* Too long silence, break it. */
         cnx->cnx_state = picoquic_state_disconnected;

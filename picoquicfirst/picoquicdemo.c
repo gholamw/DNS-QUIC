@@ -104,12 +104,22 @@ static const char* default_server_name = "::";
 static const char* ticket_store_filename = "demo_ticket_store.bin";
 
 static const char* bad_request_message = "<html><head><title>Bad Request</title></head><body>Bad request. Why don't you try \"GET /doc-456789.html\"?</body></html>";
+//static const char* bad_request_message = " ";
 
 
 #include "../picoquic/picoquic.h"
 #include "../picoquic/picoquic_internal.h"
 #include "../picoquic/picosocks.h"
 #include "../picoquic/util.h"
+#include <pthread.h>
+
+uint8_t buffer_final[1536];
+int keep_looping =1;
+int global_fd = 0;
+uint8_t buffer_recieve[1536];
+int picoquic_handshake_timing =0;
+
+
 
 void picoquic_log_error_packet(FILE* F, uint8_t* bytes, size_t bytes_max, int ret);
 
@@ -122,7 +132,7 @@ void picoquic_log_congestion_state(FILE* F, picoquic_cnx_t* cnx, uint64_t curren
 void picoquic_log_picotls_ticket(FILE* F, picoquic_connection_id_t cnx_id,
     uint8_t* ticket, uint16_t ticket_length);
 
-void print_address(struct sockaddr* address, char* label, picoquic_connection_id_t cnx_id)
+int print_address(struct sockaddr* address, char* label, picoquic_connection_id_t cnx_id)
 {
     char hostname[256];
 
@@ -138,6 +148,7 @@ void print_address(struct sockaddr* address, char* label, picoquic_connection_id
     } else {
         printf("%s: inet_ntop failed with error # %ld\n", label, WSA_LAST_ERROR(errno));
     }
+    return ((struct sockaddr_in*)address)->sin_port;
 }
 
 static char* strip_endofline(char* buf, size_t bufmax, char const* line)
@@ -157,7 +168,7 @@ static char* strip_endofline(char* buf, size_t bufmax, char const* line)
     return buf;
 }
 
-#define PICOQUIC_FIRST_COMMAND_MAX 128
+#define PICOQUIC_FIRST_COMMAND_MAX 2100
 #define PICOQUIC_FIRST_RESPONSE_MAX (1 << 20)
 
 typedef enum {
@@ -180,6 +191,22 @@ typedef struct st_picoquic_first_server_callback_ctx_t {
     size_t buffer_max;
     uint8_t* buffer;
 } picoquic_first_server_callback_ctx_t;
+
+static void hexdump(const char *title, const uint8_t *p, size_t l)
+{
+    fprintf(stderr, "%s (%zu bytes):\n", title, l);
+
+    while (l != 0) {
+        int i;
+        fputs("   ", stderr);
+        for (i = 0; i < 16; ++i) {
+            fprintf(stderr, " %02x", *p++);
+            if (--l == 0)
+                break;
+        }
+        fputc('\n', stderr);
+    }
+}
 
 static picoquic_first_server_callback_ctx_t* first_server_callback_create_context()
 {
@@ -216,6 +243,8 @@ static void first_server_callback(picoquic_cnx_t* cnx,
     uint64_t stream_id, uint8_t* bytes, size_t length,
     picoquic_call_back_event_t fin_or_event, void* callback_ctx)
 {
+
+  printf("#########################################################################################");
     picoquic_first_server_callback_ctx_t* ctx = (picoquic_first_server_callback_ctx_t*)callback_ctx;
     picoquic_first_server_stream_ctx_t* stream_ctx = NULL;
 
@@ -227,7 +256,7 @@ static void first_server_callback(picoquic_cnx_t* cnx,
         printf("%" PRIx64 ": %s\n", picoquic_val64_connection_id(picoquic_get_initial_cnxid(cnx)),
             (fin_or_event == picoquic_callback_close) ? "Connection closed" : "Application closed");
         if (ctx != NULL) {
-            first_server_callback_delete_context(ctx);
+            //first_server_callback_delete_context(ctx);
             picoquic_set_callback(cnx, first_server_callback, NULL);
         }
 
@@ -304,6 +333,48 @@ static void first_server_callback(picoquic_cnx_t* cnx,
         if ((fin_or_event == picoquic_callback_stream_fin || crlf_present != 0) && stream_ctx->response_length == 0) {
             char buf[256];
 
+            struct timeval timeout = { 3, 0};   /* 3 seconds, 0 microseconds */
+            setsockopt(global_fd, SOL_SOCKET, SO_RCVTIMEO, (char*) &timeout, sizeof(timeout));
+        while(1){
+            int n = recvfrom(global_fd, buffer_recieve, sizeof(buffer_recieve), 0, NULL, NULL);
+            //int n = 0 ;
+            //int n = 0 ;
+          //  printf("Data recieved : %d\n", n);
+            //printf("Daaaata : %d\n",recvfrom(fd , &buffer_recieve , sizeof(buffer_recieve) , 0 ,(struct sockaddr *) &address , (socklen_t*)&saddr_size));
+            //data_size = recvfrom(fd , buffer_recieve , sizeof(buffer_recieve) , 0 ,(struct sockaddr *) &address , (socklen_t*)&saddr_size);
+            //printf("Data %d\n", data_size);
+            //while(keep_looping == 1){
+            int data_size=0;
+              if(n <=0 ){
+                  //printf("Recvfrom error , failed to get packets\n");
+                  //return 1;
+              }else{
+                printf("Recvfrom Received %d bytes\n",data_size);
+                //##hexdump("Data: ", buffer_recieve, sizeof(buffer_recieve));
+
+                uint8_t buffer_to_send[1536];
+              char* send_send = (char*)buffer_recieve;
+              keep_looping = 0;
+              printf("ADD TO STREAM \n");
+              //picoquic_add_to_stream(cnx, stream_id, buffer_recieve,
+                //  sizeof(buffer_recieve), 1);
+
+              int m = 0;
+              if(buffer_recieve[2] == 0x81 && buffer_recieve[3] == 0x90){
+                printf("DNS RESPONSE HAS BEEN FOUND!!\n");
+                break;
+              }
+              //printf("THE DNS QUERY: %c\n", buffer);
+              //int bytes_sent = sendto(fd2, send_send, sizeof(buffer_recieve), 0,
+                //(struct sockaddr*)&myaddr2, sizeof(struct sockaddr_in));
+              //printf("RECVFROM() NUMBER OF BYTES ARE ACTUALLY SENT :  ");
+              //printf(" %d\n ",  bytes_sent);
+
+                //send_allow = 1;
+            }
+          //}
+        }
+
             stream_ctx->command[stream_ctx->command_length] = 0;
             /* if data generated, just send it. Otherwise, just FIN the stream. */
             stream_ctx->status = picoquic_first_server_stream_status_finished;
@@ -313,17 +384,18 @@ static void first_server_callback(picoquic_cnx_t* cnx,
                 printf("%" PRIx64 ": ", picoquic_val64_connection_id(picoquic_get_initial_cnxid(cnx)));
                 printf("Server CB, Stream: %" PRIu64 ", Reply with bad request message after command: %s\n",
                     stream_id, strip_endofline(buf, sizeof(buf), (char*)&stream_ctx->command));
-                
-                // picoquic_reset_stream(cnx, stream_id, 404);
 
-                (void)picoquic_add_to_stream(cnx, stream_ctx->stream_id, (const uint8_t *) bad_request_message,
-                    strlen(bad_request_message), 1);
+                // picoquic_reset_stream(cnx, stream_id, 404);
+                hexdump("DNS Respn: ", buffer_recieve, sizeof(buffer_recieve));
+                (void)picoquic_add_to_stream(cnx, stream_ctx->stream_id, (const uint8_t *) buffer_recieve,
+                    sizeof(buffer_recieve), 1);
+                    //bad_request_message
             } else {
                 printf("%" PRIx64 ": ", picoquic_val64_connection_id(picoquic_get_initial_cnxid(cnx)));
                 printf("Server CB, Stream: %" PRIu64 ", Processing command: %s\n",
                     stream_id, strip_endofline(buf, sizeof(buf), (char*)&stream_ctx->command));
-                picoquic_add_to_stream(cnx, stream_id, ctx->buffer,
-                    stream_ctx->response_length, 1);
+                picoquic_add_to_stream(cnx, stream_id, buffer_recieve,
+                    sizeof(buffer_recieve), 1);
             }
         } else if (stream_ctx->response_length == 0) {
             char buf[256];
@@ -331,7 +403,7 @@ static void first_server_callback(picoquic_cnx_t* cnx,
             printf("%" PRIx64 ": ", picoquic_val64_connection_id(picoquic_get_initial_cnxid(cnx)));
             stream_ctx->command[stream_ctx->command_length] = 0;
             printf("Server CB, Stream: %" PRIu64 ", Partial command: %s\n",
-                stream_id, strip_endofline(buf, sizeof(buf), (char*)&stream_ctx->command));
+                stream_id, strip_endofline(buffer_recieve, sizeof(buffer_recieve), (char*)&buffer_recieve));
         }
     }
 
@@ -387,8 +459,52 @@ int quic_server(const char* server_name, int server_port,
         }
     }
 
+    // Setup
+    // MY TESTS TO CHECK IF SOCKET IS Sending
+  //  uint8_t buffer_recieve[1536];
+
+    struct sockaddr_in myaddr2;
+    myaddr2.sin_family = AF_INET;
+    //  myaddr.sin_port = htons(1453);
+    myaddr2.sin_port = htons(53);
+
+    inet_aton("127.0.0.14", &myaddr2.sin_addr.s_addr);
+    int send_length2 = 450;
+
+     //SOCKET_TYPE fd = INVALID_SOCKET;
+     //int fd2 = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+     struct sockaddr_in address2;
+     address2.sin_family = AF_INET;
+     //address.sin_addr.s_addr = INADDR_ANY;
+     //address.sin_addr.s_addr = inet_addr("127.0.0.1");
+     address2.sin_port = htons(4411);
+     inet_aton("127.0.0.2", &address2.sin_addr.s_addr);
+     int len2=20;
+     char buffer_addr2[len2];
+     inet_ntop(AF_INET, &(address2.sin_addr), buffer_addr2, len2);
+     printf("address:%s\n",buffer_addr2);
+     int fd2 = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+     if (setsockopt(fd2, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)) < 0)
+      error("setsockopt(SO_REUSEADDR) failed");
+     printf("Socket result: %d\n", fd2);
+
+     int check_binding = bind(fd2,(struct sockaddr *)&address2,sizeof(address2));
+     printf("Binding result: %d\n", check_binding);
+     if(check_binding == 0){
+       printf("Binding is completed!\n");
+     }else{
+       printf("Binding is NOT completed\n");
+       printf("Error code: %d\n", errno);
+     }
+
+     global_fd = fd2;
+     //listen(fd2,32);
+     printf("%d\n" , ntohs(address2.sin_port));
+
     /* Wait for packets */
-    while (ret == 0 && (just_once == 0 || cnx_server == NULL || picoquic_get_cnx_state(cnx_server) != picoquic_state_disconnected)) {
+    int listen_for_ever = 1;
+    while (ret == 0 && (just_once == 0 || cnx_server == NULL || picoquic_get_cnx_state(cnx_server) != picoquic_state_disconnected || listen_for_ever==1)) {
+
         int64_t delta_t = picoquic_get_next_wake_delay(qserver, current_time, delay_max);
         uint64_t time_before = current_time;
 
@@ -416,6 +532,77 @@ int quic_server(const char* server_name, int server_port,
             }
         }
 
+
+
+
+        //struct timeval timeout = { 3, 0};   /* 3 seconds, 0 microseconds */
+        /*
+        setsockopt(fd2, SOL_SOCKET, SO_RCVTIMEO, (char*) &timeout, sizeof(timeout));
+        int n = recvfrom(fd2, buffer_recieve, sizeof(buffer_recieve), 0, NULL, NULL);
+        //int n = 0 ;
+        //int n = 0 ;
+      //  printf("Data recieved : %d\n", n);
+        //printf("Daaaata : %d\n",recvfrom(fd , &buffer_recieve , sizeof(buffer_recieve) , 0 ,(struct sockaddr *) &address , (socklen_t*)&saddr_size));
+        //data_size = recvfrom(fd , buffer_recieve , sizeof(buffer_recieve) , 0 ,(struct sockaddr *) &address , (socklen_t*)&saddr_size);
+        //printf("Data %d\n", data_size);
+        //while(keep_looping == 1){
+        int data_size=0;
+          if(n <=0 ){
+              //printf("Recvfrom error , failed to get packets\n");
+              //return 1;
+          }else{
+            printf("Recvfrom Received %d bytes\n",data_size);
+            hexdump("Data: ", buffer_recieve, sizeof(buffer_recieve));
+
+            uint8_t buffer_to_send[1536];
+          char* send_send = (char*)buffer_recieve;
+          keep_looping = 0;
+          printf("AT SERVER SIDE \n");
+          //picoquic_add_to_stream(cnx, stream_id, buffer_recieve,
+            //  sizeof(buffer_recieve), 1);
+          //printf("THE DNS QUERY: %c\n", buffer);
+          //int bytes_sent = sendto(fd2, send_send, sizeof(buffer_recieve), 0,
+            //(struct sockaddr*)&myaddr2, sizeof(struct sockaddr_in));
+          //printf("RECVFROM() NUMBER OF BYTES ARE ACTUALLY SENT :  ");
+          //printf(" %d\n ",  bytes_sent);
+
+            //send_allow = 1;
+        }
+
+
+*/
+
+    //printf("Just before recieving\n");
+    //struct timeval timeout = { 3, 0};   /* 3 seconds, 0 microseconds */
+    //setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (char*) &timeout, sizeof(timeout));
+  //  struct timeval timeout = { 3, 0};   /* 3 seconds, 0 microseconds */
+    //setsockopt(fd2, SOL_SOCKET, SO_RCVTIMEO, (char*) &timeout, sizeof(timeout));
+    //int n = recvfrom(fd2, buffer_recieve, sizeof(buffer_recieve), 0, NULL, NULL);
+    //int n = 0 ;
+    //int n = 0 ;
+  //  printf("Data recieved : %d\n", n);
+    //printf("Daaaata : %d\n",recvfrom(fd , &buffer_recieve , sizeof(buffer_recieve) , 0 ,(struct sockaddr *) &address , (socklen_t*)&saddr_size));
+    //data_size = recvfrom(fd , buffer_recieve , sizeof(buffer_recieve) , 0 ,(struct sockaddr *) &address , (socklen_t*)&saddr_size);
+    //printf("Data %d\n", data_size);
+    //int data_size=0;
+      //if(n <=0 ){
+          //printf("Recvfrom error , failed to get packets\n");
+          //return 1;
+      //}else{
+        //printf("Recvfrom Received %d bytes\n",data_size);
+        //hexdump("Data: ", buffer_recieve, sizeof(buffer_recieve));
+
+        //uint8_t buffer_to_send[1536];
+      //char* send_send = (char*)buffer_recieve;
+      //printf("THE DNS QUERY: %c\n", buffer);
+      //int bytes_sent = sendto(fd2, send_send, sizeof(buffer_recieve), 0,
+        //(struct sockaddr*)&myaddr2, sizeof(struct sockaddr_in));
+      //printf("RECVFROM() NUMBER OF BYTES ARE ACTUALLY SENT :  ");
+      //printf(" %d\n ",  bytes_sent);
+
+        //send_allow = 1;
+    //}
+
         if (bytes_recv < 0) {
             ret = -1;
         } else {
@@ -431,9 +618,285 @@ int quic_server(const char* server_name, int server_port,
                     (struct sockaddr*)&addr_to, if_index_to,
                     current_time);
 
+                //char* buff = (char*)buffer;
+                //printf("%c\n", buff);
+
+
+
+
+/* Uncomment later
+                int b;
+                printf("DNSS QUERY:  " );
+                //char *buff = (char )
+                if(sizeof(buffer) > 1){
+                  for(b=0; b<sizeof(buffer); b++){
+                    printf("%c ",  buffer[b] );
+                  }
+                }
+                printf("\n");
+                */
+
+                int b;
+                printf("DNSS QUERY AT SERVER:  " );
+                //char *buff = (char )
+                if(sizeof(buffer) > 1){
+                  for(b=0; b<sizeof(buffer); b++){
+                    printf("%c ",  buffer[b] );
+                  }
+                }
+                printf("\n");
+                printf("\n");
+
+
+
+                /*
+                buffer[2] = 0x01;
+                buffer[3] = 0x20;
+
+                buffer[4] = 0x00;
+                buffer[5] = 0x01;
+
+                buffer[6] = 0x00;
+                buffer[7] = 0x00;
+
+                buffer[8] = 0x00;
+                buffer[9] = 0x00;
+
+                buffer[10] = 0x00;
+                buffer[11] = 0x01;
+
+                buffer[12] = 0x03;
+
+                buffer[13] = 0x77;
+                buffer[14] = 0x77;
+                buffer[15] = 0x77;
+
+                buffer[16] = 0x09;
+
+                buffer[17] = 0x69;
+                buffer[18] = 0x72;
+                buffer[19] = 0x69;
+                buffer[20] = 0x73;
+                buffer[21] = 0x68;
+                buffer[22] = 0x72;
+                buffer[23] = 0x61;
+                buffer[24] = 0x69;
+                buffer[25] = 0x6c;
+
+                buffer[26] = 0x02;
+
+                buffer[27] = 0x69;
+                buffer[28] = 0x65;
+
+                buffer[29] = 0x00;
+
+                buffer[30] = 0x00;
+                buffer[31] = 0x01;
+
+                buffer[32] = 0x00;
+                buffer[33] = 0x01;
+
+                buffer[34] = 0x00;
+                buffer[35] = 0x00;
+
+                buffer[36] = 0x29;
+                buffer[37] = 0x10;
+
+                buffer[38] = 0x00;
+
+                buffer[39] = 0x00;
+                buffer[40] = 0x00;
+                buffer[41] = 0x00;
+                buffer[42] = 0x00;
+                buffer[43] = 0x00;
+                buffer[43] = 0x00;
+                int ind = 44;
+                for(ind = 44; ind < sizeof(buffer); ind++){
+                  buffer[ind] = 0x00;
+                }
+
+              */
+
+
+
+
+                //hexdump("sendmsg", buffer, 280);
+
+                printf("\n");
+                printf("\n");
+
+                /*printf("Print segemnts of the dns\n");
+
+                buffer[0] = 0xFF;
+                buffer[1] = 0xFF;
+                buffer[2] = 0xFF;
+                buffer[3] = 0xFF;
+                buffer[4] = 0xFF;
+                buffer[5] = 0xFF;
+                hexdump("sendmsg", buffer, 280);
+
+
+                printf("End of segmentation\n"); */
+                uint8_t buffer2[1536];
+                memcpy(buffer2, &buffer[30], 80);
+                uint8_t buffer5[1536];
+                int pick_buffer5 = 0;
+                if(buffer2[0] == 0x00){
+                  //printf()
+                  pick_buffer5 = 1;
+                  printf("YES first byte is 0x00\n");
+                  buffer5[0] = buffer[26];
+                  buffer5[1] = buffer[27];
+                  buffer5[2] = buffer[28];
+                  buffer5[3] = buffer[29];
+                  int i =4;
+                  int j = 30;
+                  for(i = 4; i<sizeof(buffer); i++){
+                    buffer5[i] = buffer[j];
+                    j++;
+                  }
+                  //memcpy(buffer5[4], &buffer[30], 80);
+                  //printf("EDITED BUFFER\n");
+                  printf("\n");
+                  printf("\n");
+                  //hexdump("sendmsg", buffer5, 280);
+                  printf("\n");
+                  printf("\n");
+
+                }
+                //printf("Modified buffer: \n");
+                //printf("\n");
+                //hexdump("sendmsg", buffer2, 280);
+                printf("\n");
+                printf("\n");
+
+
+                //struct sockaddr_in myaddr;
+                //myaddr.sin_family = AF_INET;
+              //  myaddr.sin_port = htons(1453);
+                //myaddr.sin_port = htons(53);
+
+                //inet_aton("127.0.0.7", &myaddr.sin_addr.s_addr);
+                //send_length = 450;
+
+                    //SOCKET_TYPE fd = INVALID_SOCKET;
+                    //fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+                    //struct sockaddr_in address;
+                    //address.sin_family = AF_INET;
+                    //address.sin_addr.s_addr = INADDR_ANY;
+                    //address.sin_addr.s_addr = inet_addr("127.0.0.1");
+                    //address.sin_port = htons(4433);
+                    //inet_aton("127.0.0.1", &address.sin_addr.s_addr);
+                    //int len=20;
+                    //char buffer_addr[len];
+                    //inet_ntop(AF_INET, &(address.sin_addr), buffer_addr, len);
+                    //printf("address:%s\n",buffer_addr);
+                    //bind(fd,(struct sockaddr *)&address,sizeof(address));
+                    //listen(fd,32);
+                    //printf("%d\n" , ntohs(address.sin_port));
+                    //int recieve_port = print_address((struct sockaddr*)&address, "CHeck from:",
+                        //picoquic_get_initial_cnxid(cnx_server));
+                    //printf("%c\n", address.sin_addr);
+                    //printf("%d\n", address.sin_port);
+
+                uint8_t buffer_to_send[1536];
+                //char* send_send = (char*)buffer2;
+                //printf("THE DNS QUERY: %c\n", buffer);
+
+                //int bytes_sent = sendto(fd, buffer, (int)send_length, 0,
+                  //(struct sockaddr*)&myaddr, sizeof(struct sockaddr_in));
+                //bytes_sent = sendto(fd, buffer, (int)send_length, 0,
+                  //(struct sockaddr*)&myaddr, sizeof(struct sockaddr_in));
+                  //printf("NUMBER OF BYTES ARE ACTUALLY SENT :");
+                  //printf("%d\n", bytes_sent);
+
+                  // MY TESTS TO CHECK IF SOCKET IS Sending
+                  /*
+                  struct sockaddr_in myaddr2;
+               myaddr2.sin_family = AF_INET;
+             //  myaddr.sin_port = htons(1453);
+               myaddr2.sin_port = htons(53);
+
+               inet_aton("127.0.0.7", &myaddr2.sin_addr.s_addr);
+               int send_length2 = 450;
+
+                   //SOCKET_TYPE fd = INVALID_SOCKET;
+                   //int fd2 = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+                   struct sockaddr_in address2;
+                   address2.sin_family = AF_INET;
+                   //address.sin_addr.s_addr = INADDR_ANY;
+                   //address.sin_addr.s_addr = inet_addr("127.0.0.1");
+                   address2.sin_port = htons(4488);
+                   inet_aton("127.0.0.2", &address2.sin_addr.s_addr);
+                   int len2=20;
+                   char buffer_addr2[len2];
+                   inet_ntop(AF_INET, &(address2.sin_addr), buffer_addr2, len2);
+                   printf("address:%s\n",buffer_addr2);
+                   int fd2 = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+                   if (setsockopt(fd2, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)) < 0)
+                    error("setsockopt(SO_REUSEADDR) failed");
+                   printf("Socket result: %d\n", fd2);
+
+                   int check_binding = bind(fd2,(struct sockaddr *)&address2,sizeof(address2));
+                   printf("Binding result: %d\n", check_binding);
+                   if(check_binding == 0){
+                     printf("Binding is completed!\n");
+                   }else{
+                     printf("Binding is NOT completed\n");
+                     printf("Error code: %d\n", errno);
+                   }
+                   //listen(fd2,32);
+                   printf("%d\n" , ntohs(address2.sin_port));
+                   //int recieve_port = print_address((struct sockaddr*)&address, "CHeck from:",
+                       //picoquic_get_initial_cnxid(cnx_server));
+                   //printf("%c\n", address.sin_addr);
+                   //printf("%d\n", address.sin_port);
+
+               uint8_t buffer3[1536];
+               buffer3[0] = 0x57;
+               buffer3[1] = 0x65;
+               buffer3[2] = 0x73;
+               buffer3[3] = 0x73;
+               buffer3[4] = 0x61;
+               buffer3[5] = 0x6d;
+               buffer3[6] = 0xff;
+               buffer3[7] = 0xff;
+               */
+               int size_to_be_sent = 0;
+               uint8_t buffer_to_send2[1536];
+               char* send_send2;
+               if(pick_buffer5 == 1){
+                 send_send2 = (char*)buffer5;
+                 size_to_be_sent = sizeof(buffer5);
+               }else{
+                 send_send2 = (char*)buffer2;
+                 size_to_be_sent = sizeof(buffer2);
+
+               }
+               //printf("THE DNS QUERY: %c\n", buffer);
+
+               int bytes_sent2 = sendto(fd2, send_send2, size_to_be_sent, 0,
+                 (struct sockaddr*)&myaddr2, sizeof(struct sockaddr_in));
+                 printf("MY TEST, NUMBER OF BYTES ARE ACTUALLY SENT :");
+                 printf("%d\n", bytes_sent2);
+
+                 if(picoquic_handshake_timing == 1){
+                  // exit(1);
+                 }
+
+                 // END OF MY TESTS
+
+
+
+
+
+
+
+
                 if (ret != 0) {
                     ret = 0;
                 }
+
 
                 if (cnx_server != picoquic_get_first_cnx(qserver) && picoquic_get_first_cnx(qserver) != NULL) {
                     cnx_server = picoquic_get_first_cnx(qserver);
@@ -479,15 +942,15 @@ int quic_server(const char* server_name, int server_port,
                             free(p);
 
                             printf("%" PRIx64 ": ", picoquic_val64_connection_id(picoquic_get_initial_cnxid(cnx_next)));
-                            printf("Closed. Retrans= %d, spurious= %d, max sp gap = %d, max sp delay = %d\n",
-                                (int)cnx_next->nb_retransmission_total, (int)cnx_next->nb_spurious,
-                                (int)cnx_next->path[0]->max_reorder_gap, (int)cnx_next->path[0]->max_spurious_rtt);
+                          //  printf("Closed. Retrans= %d, spurious= %d, max sp gap = %d, max sp delay = %d\n",
+                              //  (int)cnx_next->nb_retransmission_total, (int)cnx_next->nb_spurious,
+                              //  (int)cnx_next->path[0]->max_reorder_gap, (int)cnx_next->path[0]->max_spurious_rtt);
 
                             if (cnx_next == cnx_server) {
                                 cnx_server = NULL;
                             }
 
-                            picoquic_delete_cnx(cnx_next);
+                            //picoquic_delete_cnx(cnx_next);
 
                             fflush(stdout);
 
@@ -584,6 +1047,7 @@ typedef struct st_picoquic_first_client_stream_ctx_t {
     struct st_picoquic_first_client_stream_ctx_t* next_stream;
     uint32_t stream_id;
     uint8_t command[PICOQUIC_FIRST_COMMAND_MAX + 1]; /* starts with "GET " */
+    char *query;
     size_t received_length;
     FILE* F; /* NULL if stream is closed. */
 } picoquic_first_client_stream_ctx_t;
@@ -627,6 +1091,54 @@ static void demo_client_open_stream(picoquic_cnx_t* cnx,
         stream_ctx->command[text_len + 7] = 0;
         stream_ctx->stream_id = stream_id;
 
+        int b;
+        //printf("DNSS QUERY AT CALLBACK BEFORE ENcryption:  " );
+        //char *buff = (char )
+        if(sizeof(buffer_final) > 1){
+          for(b=0; b<sizeof(buffer_final); b++){
+            //printf("%c ",  buffer_final[b] );
+          }
+        }
+        printf("\n");
+        printf("\n");
+
+        //hexdump("sendmsg", buffer_final, 140);
+
+        printf("\n");
+        printf("\n");
+
+// Test to send query to recursive and check if it malfored or not!
+
+        struct sockaddr_in myaddr;
+        myaddr.sin_family = AF_INET;
+      //  myaddr.sin_port = htons(1453);
+        myaddr.sin_port = htons(53);
+
+        inet_aton("127.0.0.8", &myaddr.sin_addr.s_addr);
+        int send_length = sizeof(buffer_final)+5;
+
+            SOCKET_TYPE fd = INVALID_SOCKET;
+            fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+            struct sockaddr_in address;
+            address.sin_family = AF_INET;
+            address.sin_addr.s_addr = INADDR_ANY;
+            address.sin_addr.s_addr = inet_addr("127.0.0.1");
+            address.sin_port = htons(4466);
+            bind(fd,(struct sockaddr *)&address,sizeof(address));
+            listen(fd,32);
+
+
+        uint8_t buffer_to_send[1536];
+        char* send_send = (char*)buffer_final;
+        //printf("THE DNS QUERY: %c\n", buffer);
+
+        int bytes_sent = sendto(fd, send_send, (int)send_length, 0,
+          (struct sockaddr*)&myaddr, sizeof(struct sockaddr_in));
+
+// End of testing
+
+
+
         stream_ctx->next_stream = ctx->first_stream;
         ctx->first_stream = stream_ctx;
 
@@ -649,15 +1161,15 @@ static void demo_client_open_stream(picoquic_cnx_t* cnx,
 
         if (stream_ctx->stream_id == 1) {
             /* Horrible hack to test sending in three blocks */
-            (void)picoquic_add_to_stream(cnx, stream_ctx->stream_id, stream_ctx->command,
-                5, 0);
-            (void)picoquic_add_to_stream(cnx, stream_ctx->stream_id, &stream_ctx->command[5],
-                text_len, 0);
-            (void)picoquic_add_to_stream(cnx, stream_ctx->stream_id, &stream_ctx->command[5 + text_len],
-                2, 1);
+            //(void)picoquic_add_to_stream(cnx, stream_ctx->stream_id, buffer_final,
+              //  sizeof(buffer_final), 1);
+            //(void)picoquic_add_to_stream(cnx, stream_ctx->stream_id, &buffer_final[5],
+              //  text_len, 0);
+            //(void)picoquic_add_to_stream(cnx, stream_ctx->stream_id, &buffer_final[5 + text_len],
+              //  2, 1);
         } else {
-            (void)picoquic_add_to_stream(cnx, stream_ctx->stream_id, stream_ctx->command,
-                text_len + 7, 1);
+            (void)picoquic_add_to_stream(cnx, stream_ctx->stream_id, buffer_final,
+                sizeof(buffer_final), 1);
         }
     }
 }
@@ -665,6 +1177,8 @@ static void demo_client_open_stream(picoquic_cnx_t* cnx,
 static void demo_client_start_streams(picoquic_cnx_t* cnx,
     picoquic_first_client_callback_ctx_t* ctx, uint64_t fin_stream_id)
 {
+  printf("No. of streams in ctx : %d\n" , ctx->nb_demo_streams);
+
     for (size_t i = 0; i < ctx->nb_demo_streams; i++) {
         if (ctx->demo_stream[i].previous_stream_id == fin_stream_id) {
             demo_client_open_stream(cnx, ctx, ctx->demo_stream[i].stream_id,
@@ -696,7 +1210,7 @@ static void first_client_callback(picoquic_cnx_t* cnx,
 
         while (stream_ctx != NULL) {
             if (stream_ctx->F != NULL) {
-                fclose(stream_ctx->F);
+                //fclose(stream_ctx->F);
                 stream_ctx->F = NULL;
                 ctx->nb_open_streams--;
 
@@ -724,7 +1238,7 @@ static void first_client_callback(picoquic_cnx_t* cnx,
         if (stream_ctx->F != NULL) {
             char buf[256];
 
-            fclose(stream_ctx->F);
+            //fclose(stream_ctx->F);
             stream_ctx->F = NULL;
             ctx->nb_open_streams--;
             fin_stream_id = stream_id;
@@ -753,7 +1267,7 @@ static void first_client_callback(picoquic_cnx_t* cnx,
         if (fin_or_event == picoquic_callback_stream_fin) {
             char buf[256];
             /* if data generated, just send it. Otherwise, just FIN the stream. */
-            fclose(stream_ctx->F);
+            //fclose(stream_ctx->F);
             stream_ctx->F = NULL;
             ctx->nb_open_streams--;
             fin_stream_id = stream_id;
@@ -826,6 +1340,32 @@ int quic_client(const char* ip_address_text, int server_port, uint32_t proposed_
 
     if (ret == 0) {
         fd = socket(server_address.ss_family, SOCK_DGRAM, IPPROTO_UDP);
+
+        struct sockaddr_in address;
+        address.sin_family = AF_INET;
+        address.sin_addr.s_addr = inet_addr("127.0.0.17");
+        address.sin_port=htons(4449);
+        //bind(fd,(struct sockaddr *)&address,sizeof(address));
+        //listen(fd,32);
+
+    int optval = 1;
+    setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval));
+     //int fd2 = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+     //if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)) < 0)
+      //error("setsockopt(SO_REUSEADDR) failed");
+     //printf("Socket result: %d\n", fd);
+
+     int check_binding = bind(fd,(struct sockaddr *)&address,sizeof(address));
+     printf("Binding result: %d\n", check_binding);
+     if(check_binding == 0){
+       printf("Binding is completed!\n");
+     }else{
+       printf("Binding is NOT completed\n");
+       printf("Error code: %d\n", errno);
+     }
+     listen(fd,32);
+
+
         if (fd == INVALID_SOCKET) {
             ret = -1;
         }
@@ -902,7 +1442,8 @@ int quic_client(const char* ip_address_text, int server_port, uint32_t proposed_
     }
 
     /* Wait for packets */
-    while (ret == 0 && picoquic_get_cnx_state(cnx_client) != picoquic_state_disconnected) {
+    int listen_for_ever = 1;
+    while (ret == 0 && picoquic_get_cnx_state(cnx_client) != picoquic_state_disconnected || listen_for_ever) {
         if (picoquic_is_cnx_backlog_empty(cnx_client) && callback_ctx.nb_open_streams == 0) {
             delay_max = 10000;
         } else {
@@ -937,6 +1478,45 @@ int quic_client(const char* ip_address_text, int server_port, uint32_t proposed_
                     (struct sockaddr*)&packet_to, if_index_to,
                     current_time);
                 client_receive_loop++;
+
+                int recieve_port = print_address((struct sockaddr*)&packet_from, "Rcvd from:",
+                    picoquic_get_initial_cnxid(cnx_client));
+                if(recieve_port == 20753){
+                  printf("FROM SERVER\n");
+                  int b = 0;
+                  for(b=0; b<sizeof(buffer); b++){
+                    if(buffer[b]==0x81 && buffer[b+1] == 0x90){
+                      printf("INSIDE MY SPECIAL IF STATEMENT\n");
+                      uint8_t buffer210[1536];
+                      memcpy(buffer210, &buffer[b-2], 500);
+                      hexdump("Cut off dns rspn: ", buffer210, sizeof(buffer210));
+
+                      struct sockaddr_in address23;
+                      address23.sin_family = AF_INET;
+                      address23.sin_port = htons(4450);
+                      inet_aton("127.0.0.12", &address23.sin_addr.s_addr);
+                      int bytes_sent = sendto(fd, buffer210, sizeof(buffer210), 0,
+                        (struct sockaddr*)&address23, sizeof(struct sockaddr_in));
+                      //exit(1); 
+                        break;
+                    }
+                  }
+                  //struct sockaddr_in address23;
+                  //address23.sin_family = AF_INET;
+                  //address23.sin_port = htons(53);
+                  //inet_aton("127.0.0.9", &address23.sin_addr.s_addr);
+                  //int bytes_sent = sendto(fd, buffer, sizeof(buffer), 0,
+                    //(struct sockaddr*)&address23, sizeof(struct sockaddr_in));
+                }else{
+                  printf("FROM STUB\n");
+                  hexdump("Query from stub: ", buffer, sizeof(buffer));
+
+                  memcpy(buffer_final, buffer, sizeof(buffer));
+                  callback_ctx.demo_stream = test_scenario;
+                  callback_ctx.nb_demo_streams = test_scenario_nb;
+                  //printf("No. of streams in cnx : %d\n" , (picoquic_cnx_t)cnx_client->nb_demo_streams);
+                  demo_client_start_streams(cnx_client, &callback_ctx, 0);
+                }
 
                 picoquic_log_processing(F_log, cnx_client, bytes_recv, ret);
 
@@ -973,12 +1553,17 @@ int quic_client(const char* ip_address_text, int server_port, uint32_t proposed_
                         picoquic_log_transport_extension(F_log, cnx_client, 0);
                         printf("Connection established.\n");
                         established = 1;
+                        if(picoquic_handshake_timing == 1 ){
+                          exit(1);
+                        }
 #if 1
                         /* Start the download scenario */
-                        callback_ctx.demo_stream = test_scenario;
-                        callback_ctx.nb_demo_streams = test_scenario_nb;
+                        //callback_ctx.demo_stream = test_scenario;
+                        //callback_ctx.nb_demo_streams = test_scenario_nb;
 
-                        demo_client_start_streams(cnx_client, &callback_ctx, 0);
+                        //demo_client_start_streams(cnx_client, &callback_ctx, 0);
+                        //demo_client_start_streams(cnx_client, &callback_ctx, 0);
+
 #endif
                     }
 
@@ -987,29 +1572,29 @@ int quic_client(const char* ip_address_text, int server_port, uint32_t proposed_
                     if ((bytes_recv == 0 || client_ready_loop > 4) && picoquic_is_cnx_backlog_empty(cnx_client)) {
                         if (callback_ctx.nb_open_streams == 0) {
                             if (cnx_client->nb_zero_rtt_sent != 0) {
-                                fprintf(stdout, "Out of %d zero RTT packets, %d were acked by the server.\n",
-                                    cnx_client->nb_zero_rtt_sent, cnx_client->nb_zero_rtt_acked);
+                                //fprintf(stdout, "Out of %d zero RTT packets, %d were acked by the server.\n",
+                                    //cnx_client->nb_zero_rtt_sent, cnx_client->nb_zero_rtt_acked);
                                 if (F_log != stdout && F_log != stderr)
                                 {
-                                    fprintf(F_log, "Out of %d zero RTT packets, %d were acked by the server.\n",
-                                        cnx_client->nb_zero_rtt_sent, cnx_client->nb_zero_rtt_acked);
+                                  //  fprintf(F_log, "Out of %d zero RTT packets, %d were acked by the server.\n",
+                                    //    cnx_client->nb_zero_rtt_sent, cnx_client->nb_zero_rtt_acked);
                                 }
                             }
-                            fprintf(stdout, "All done, Closing the connection.\n");
+                            //fprintf(stdout, "All done, Closing the connection.\n");
                             if (F_log != stdout && F_log != stderr)
                             {
-                                fprintf(F_log, "All done, Closing the connection.\n");
+                              //  fprintf(F_log, "All done, Closing the connection.\n");
                             }
 
-                            ret = picoquic_close(cnx_client, 0);
+                            //ret = picoquic_close(cnx_client, 0);
                         } else if (
                             current_time > callback_ctx.last_interaction_time && current_time - callback_ctx.last_interaction_time > 10000000ull) {
-                            fprintf(stdout, "No progress for 10 seconds. Closing. \n");
+                            //fprintf(stdout, "No progress for 10 seconds. Closing. \n");
                             if (F_log != stdout && F_log != stderr)
                             {
-                                fprintf(F_log, "No progress for 10 seconds. Closing. \n");
+                              //  fprintf(F_log, "No progress for 10 seconds. Closing. \n");
                             }
-                            ret = picoquic_close(cnx_client, 0);
+                            //ret = picoquic_close(cnx_client, 0);
                         }
                     }
                 }
@@ -1131,7 +1716,7 @@ typedef struct {
     picoquic_connection_id_t cnx_id_val;
 } cnx_id_callback_ctx_t;
 
-static void cnx_id_callback(picoquic_connection_id_t cnx_id_local, picoquic_connection_id_t cnx_id_remote, void* cnx_id_callback_ctx, 
+static void cnx_id_callback(picoquic_connection_id_t cnx_id_local, picoquic_connection_id_t cnx_id_remote, void* cnx_id_callback_ctx,
     picoquic_connection_id_t * cnx_id_returned)
 {
     cnx_id_callback_ctx_t* ctx = (cnx_id_callback_ctx_t*)cnx_id_callback_ctx;
@@ -1174,7 +1759,7 @@ int main(int argc, char** argv)
 
     /* Get the parameters */
     int opt;
-    while ((opt = getopt(argc, argv, "c:k:p:v:1rhzi:s:l:m:")) != -1) {
+    while ((opt = getopt(argc, argv, "c:k:p:v:1rhzi:s:l:m:t:")) != -1) {
         switch (opt) {
         case 'c':
             server_cert_file = optarg;
@@ -1245,6 +1830,10 @@ int main(int argc, char** argv)
         case 'h':
             usage();
             break;
+        case 't':
+            fprintf(stderr , "Timing picoquic handshake\n");
+            picoquic_handshake_timing = 1;
+            break;
         }
     }
 
@@ -1307,6 +1896,7 @@ int main(int argc, char** argv)
         }
 
         /* Run as client */
+        printf("picoquic_handshake_timing: %d\n", picoquic_handshake_timing);
         printf("Starting PicoQUIC connection to server IP = %s, port = %d\n", server_name, server_port);
         ret = quic_client(server_name, server_port, proposed_version, force_zero_share, mtu_max, F_log);
 
