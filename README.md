@@ -41,5 +41,5 @@ stubTLS.conf and recursiveTLS.conf are created to run servers which send queries
 
 # 3.3 Send queries over QUIC
 
-cd ..
-sh quicQueries.sh
+1. cd ..
+2. sh quicQueries.sh
