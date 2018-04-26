@@ -19,32 +19,32 @@ sudo killall picoquicdemo
 
 
 
-#./picoquicdemo -p 4433 &
-#./picoquicdemo localhost 4433 &
-#cd ..
- #python start_dns_query_timing.py
- #dig @$CLIENTQUICIP -p $CLIENTQUICPORT -b 127.0.0.1#4449 www.google.com
- #python end_dns_query_timing.py www.google.com
+./picoquicdemo -p 4433 &
+./picoquicdemo localhost 4433 &
+cd ..
+ python start_dns_query_timing.py
+ dig @$CLIENTQUICIP -p $CLIENTQUICPORT -b 127.0.0.1#4449 www.google.com
+ python end_dns_query_timing.py www.google.com
 
-#sudo killall picoquicdemo
+sudo killall picoquicdemo
 
 
 
-#./picoquicdemo -p 4433 &
-#./picoquicdemo localhost 4433 &
-#cd ..
- #python start_dns_query_timing.py
- #dig @$CLIENTQUICIP -p $CLIENTQUICPORT -b 127.0.0.1#4449 www.gov.ie
- #python end_dns_query_timing.py www.gov.ie
+./picoquicdemo -p 4433 &
+./picoquicdemo localhost 4433 &
+cd ..
+ python start_dns_query_timing.py
+ dig @$CLIENTQUICIP -p $CLIENTQUICPORT -b 127.0.0.1#4449 www.gov.ie
+ python end_dns_query_timing.py www.gov.ie
 
-#sudo killall picoquicdemo
+sudo killall picoquicdemo
 
-#./picoquicdemo -p 4433 &
-#./picoquicdemo localhost 4433 &
-#cd ..
- #python start_dns_query_timing.py
- #dig @$CLIENTQUICIP -p $CLIENTQUICPORT -b 127.0.0.1#4449 www.dublinbus.ie
- #python end_dns_query_timing.py www.dublinbus.ie
+./picoquicdemo -p 4433 &
+./picoquicdemo localhost 4433 &
+cd ..
+ python start_dns_query_timing.py
+ dig @$CLIENTQUICIP -p $CLIENTQUICPORT -b 127.0.0.1#4449 www.dublinbus.ie
+ python end_dns_query_timing.py www.dublinbus.ie
 
-#sudo killall picoquicdemo
-#cd ..
+sudo killall picoquicdemo
+cd ..
